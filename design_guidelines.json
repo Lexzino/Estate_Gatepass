@@ -1,0 +1,167 @@
+{
+  "app_name": "EstateGate",
+  "personality": "1 iOS-Native Clean",
+  "personality_one_liner": "A highly reliable, crisp, and high-contrast utility app that feels premium for residents while operating with strict precision for security guards.",
+  "color": {
+    "surface": "#FFFFFF",
+    "onSurface": "#000000",
+    "surfaceSecondary": "#F2F2F7",
+    "onSurfaceSecondary": "#1C1C1E",
+    "surfaceTertiary": "#E5E5EA",
+    "onSurfaceTertiary": "#3A3A3C",
+    "surfaceInverse": "#1C1C1E",
+    "onSurfaceInverse": "#FFFFFF",
+    "brand": "#1C1C1E",
+    "onBrand": "#FFFFFF",
+    "brandPrimary": "#1A1A1A",
+    "onBrandPrimary": "#FFFFFF",
+    "brandSecondary": "#48484A",
+    "onBrandSecondary": "#FFFFFF",
+    "brandTertiary": "#E5E5EA",
+    "onBrandTertiary": "#1C1C1E",
+    "success": "#34C759",
+    "onSuccess": "#FFFFFF",
+    "warning": "#FF9500",
+    "onWarning": "#FFFFFF",
+    "error": "#FF3B30",
+    "onError": "#FFFFFF",
+    "info": "#637A6D",
+    "onInfo": "#FFFFFF",
+    "border": "#E5E5EA",
+    "borderStrong": "#C7C7CC",
+    "divider": "#C7C7CC",
+    "muted": "#8E8E93"
+  },
+  "typography": {
+    "displayFontFamily": "Plus Jakarta Sans",
+    "textFontFamily": "Plus Jakarta Sans",
+    "scale": {
+      "sm": 12,
+      "base": 14,
+      "lg": 16,
+      "xl": 20,
+      "2xl": 24
+    }
+  },
+  "spacing": {
+    "rule": "Adhere to strict iOS-native margins (typically 16pt outer) and ensure large 44x44pt minimum touch targets for all interactive elements, especially crucial for the guard view in varied outdoor lighting.",
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "2xl": 32,
+    "3xl": 48
+  },
+  "radius_tokens": {
+    "sm": 6,
+    "md": 12,
+    "lg": 20,
+    "pill": 999
+  },
+  "shadow_tier": "1",
+  "navigation": "bottom_tabs",
+  "icon_set": "Ionicons",
+  "glassmorphism": {
+    "enabled": "true",
+    "do's": [
+      "Use blur on the bottom tab bar and sticky headers over scrollable feeds (like the resident's active passes list).",
+      "Apply frosted glass overlays over the main hero architecture imagery on the login screen."
+    ],
+    "dont's": [
+      "Do not use glass effects on the Guard Scanner or Scan Result screens; these must remain solid, high-contrast, and instantly readable in harsh outdoor daylight."
+    ]
+  },
+  "platform_libraries": {
+    "glass": {
+      "ios": "expo-glass-effect",
+      "android": "expo-blur",
+      "low_end_android_fallback": "solid surfaceSecondary"
+    },
+    "image": "expo-image",
+    "blur": "expo-blur",
+    "bottom_sheet": "@gorhom/bottom-sheet",
+    "animation": "react-native-reanimated",
+    "gesture": "react-native-gesture-handler"
+  },
+  "screens": [
+    {
+      "name": "Login",
+      "purpose": "Role-based authentication entry point.",
+      "states": {
+        "loading": "Centered native spinner over the login form.",
+        "empty": "N/A",
+        "error": "Inline red validation text under inputs."
+      },
+      "layout": "Full-bleed architectural hero image at the top with a gradient scrim (top to bottom). A clean, white floating card at the bottom (using border-radius top-left/right) housing the login form. Include segmented control or plain text links to toggle between Resident, Guard, and Admin roles."
+    },
+    {
+      "name": "Resident Dashboard",
+      "purpose": "Overview of visitor activity and quick access to create new passes.",
+      "states": {
+        "loading": "Skeleton loaders for the recent visitor list.",
+        "empty": "Illustration of a secure gate with 'No active passes' and a prominent 'Invite Visitor' button.",
+        "error": "Card displaying 'Unable to load passes' with a 'Retry' button."
+      },
+      "layout": "Dashboard pattern. Top sticky header with Resident greeting and unread notifications badge. A large, prominent 'Invite Visitor' primary CTA card at the top of the scroll view. Below: a section for 'Active Passes' (horizontal scroll or stacked cards) and 'Unexpected Visitor Requests' (actionable cards with Approve/Reject)."
+    },
+    {
+      "name": "QR Pass Preview",
+      "purpose": "Displays the generated QR code for sharing and pass management.",
+      "states": {
+        "loading": "Spinner centered on the QR code slot.",
+        "empty": "N/A",
+        "error": "Error message with 'Generate Again' button."
+      },
+      "layout": "Centered, high-contrast QR code contained within a bordered, elevated card (shadow tier 2). Below the code: pass validity details (time-window, one-time). A sticky primary CTA at the bottom using phone share sheet ('Share Pass'), and a secondary destructive text button ('Revoke Pass')."
+    },
+    {
+      "name": "Guard Scanner",
+      "purpose": "Full-screen camera utility for guards to scan incoming visitor QR codes.",
+      "states": {
+        "loading": "N/A - Scanner is live.",
+        "empty": "N/A",
+        "error": "Fallback message 'Camera permission denied' with a button to open settings, plus manual lookup option."
+      },
+      "layout": "Camera view takes up the entire screen. A dark translucent overlay with a clear square cutout in the center guides the scan. Floating pill at the top shows offline status ('Offline: 5 Pending Syncs' in warning color). Floating bottom panel with a large 'Manual Lookup' button."
+    },
+    {
+      "name": "Scan Result",
+      "purpose": "Immediate, unambiguous access decision feedback for guards.",
+      "states": {
+        "loading": "Spinner with 'Verifying...'",
+        "empty": "N/A",
+        "error": "N/A - the entire screen acts as the status."
+      },
+      "layout": "FULL SCREEN status overlay. Background color strictly maps to result: Solid Success (Green), Solid Error (Red), or Solid Warning (Orange). Large, bold typography ('ACCESS GRANTED' / 'DENIED' / 'EXPIRED'). In the center, a card containing the visitor's photo (for visual ID check), name, and host resident details. Large 'Dismiss' button at the bottom."
+    },
+    {
+      "name": "Admin Overview",
+      "purpose": "High-level metrics, charts, and system management for estate admins.",
+      "states": {
+        "loading": "Skeleton UI for charts and metric cards.",
+        "empty": "N/A",
+        "error": "Toast or inline alert indicating sync failure."
+      },
+      "layout": "Grid of key metric cards (Entries Today, Denied Entries, Active Passes). Below: A chart (using a library like react-native-chart-kit) showing visitor traffic. Sections for 'Active Guards' and 'Recent Security Incidents'. Use iOS grouped list styling (surfaceSecondary background with surface cards) for dense data presentation."
+    }
+  ],
+  "images": {
+    "login_hero": {
+      "url": "https://images.unsplash.com/photo-1591474200742-8e512e6f98f8?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODl8MHwxfHNlYXJjaHwyfHxtb2Rlcm4lMjByZXNpZGVudGlhbCUyMGVzdGF0ZSUyMGFyY2hpdGVjdHVyZSUyMGV4dGVyaW9yJTIwZGF5bGlnaHR8ZW58MHx8fHwxNzkzMzU0Nzc3fDA&ixlib=rb-4.1.0&q=85",
+      "alt": "Modern residential estate architecture under a clear sky"
+    },
+    "guard_scanner_empty": {
+      "url": "https://images.unsplash.com/photo-1600147131759-880e94a6185f?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NzR8MHwxfHNlYXJjaHwxfHxzZWN1cml0eSUyMGd1YXJkJTIwc2Nhbm5pbmclMjBxciUyMGNvZGUlMjB3aXRoJTIwcGhvbmV8ZW58MHx8fHwxNzkzMzU0Nzc3fDA&ixlib=rb-4.1.0&q=85",
+      "alt": "Security scanning QR code illustration"
+    }
+  },
+  "instructions_to_main_agent": [
+    "Strictly avoid any blues, purples, or navys in the UI. Stick to the predefined Charcoal/Black brand palette with strict iOS system colors for status (Green, Orange, Red).",
+    "Implement role-based routing (Resident vs. Guard vs. Admin) immediately after login. Do not mix their navigation stacks.",
+    "For the Guard role, the root screen must be the full-screen QR scanner (using expo-camera). It must support offline scanning mode, caching results locally and displaying an offline sync badge.",
+    "The Guard Scan Result screen must fill the entire screen with the solid status color (success/warning/error) as its background. This is a critical requirement for outdoor daylight readability.",
+    "When a visitor's pass is generated, use React Native's `Share` API to trigger the native phone share sheet instead of a custom sharing UI.",
+    "Ensure the Resident Dashboard prominently displays unexpected visitor requests (Approve/Reject) at the top of the feed to reduce friction."
+  ]
+}

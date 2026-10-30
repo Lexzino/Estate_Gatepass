@@ -1,0 +1,42 @@
+{
+  "summary": "Retest of the iteration-1 fixes. Backend: 28/28 pass when run serially (public suite 17 plus the new tests/test_iteration2_fixes.py with 11). Each fix works as described. (1) The visitor name is now saved on each visit, so a second household using the same phone does not rename older passes. Checked on the resident detail and list, admin list (masked) and reveal, the public /p page, the guard offline cache, guard phone lookup and guard scan. (2) Looking up a pass by ref now returns it in any status: expired and used passes come back, and verify returns EXPIRED or ALREADY_USED. Phone lookup still returns only active passes. (3) After approve or reject, the resident notification title becomes 'Gate request handled' and the message starts with 'Approved by ...' or 'Rejected by ...'. Frontend (375x667): the resident, guard and admin roles all load and every tab switches correctly. No native-tabs deprecation warning shows in the browser console. On the guard Lookup tab, results clear when you come back from the result screen and when you switch tabs and return. A USED pass appears when searched by ref, and Verify shows ALREADY USED. Smoke test passed: resident invite -> QR pass; guard pastes token -> ALLOW -> admit -> 'Entry recorded'; admin overview shows metrics and the chart; the Alerts screen shows the 'Gate request handled' cards. NEW CRITICAL bug found: concurrent requests that write audit logs return 500 because two requests pick the same audit_logs.seq number (DuplicateKeyError).",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "ALL endpoints that call core.audit() (login, scan, entry-confirm, create visit, manual-lookup, approve, etc.)", "issue": "core.py:258-275 reads the highest seq with find_one and then inserts seq+1, with no lock or retry. Two concurrent requests pick the same seq and hit the unique index on seq_1: DuplicateKeyError -> HTTP 500. Reproduced with 12 parallel logins: 7 of 12 returned 500 (tests/helper_concurrency_audit.py). It also showed up when pytest ran under xdist. Side effects already saved before the audit call are not rolled back. Example: create_visit inserts the visit, the audit fails, the resident gets a 500 and retries, and a duplicate pass is created. A busy gate with several guards will hit this.", "priority": "CRITICAL"}
+    ],
+    "minor": [
+      {"endpoint": "POST /api/residents/visitor-requests/{id}/approve|reject", "issue": "The status check (_pending_request) and the update are separate steps, so two concurrent approves (two household members) can both pass the check and create two passes, and a concurrent approve and reject can both succeed. Use find_one_and_update({id, status:'pending'}, {$set: {status:'approving'}}) before calling create_visit."},
+      {"endpoint": "rate limits (lookup 10/min, scan 40/min, login)", "issue": "The rate limits are kept in process memory: they are not shared between workers and reset on restart. Already known."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Guard lookup -> Verify (first run only)", "issue": "Happened once: tapping Verify right after admitting a pass did not open the result screen, and the browser console logged one 502 that never reached the backend log (probably the ingress). It did not happen on retry; the same flow worked. Logged as flaky. It would help to always show a toast on network errors.", "affected_testIDs": ["lookup-verify-{ref}"]}
+    ],
+    "design_issues": [
+      {"screen": "Resident Alerts", "issues": ["Handled gate requests still use the orange 'hand' visitor_request icon, so they look like they still need action. Consider a neutral or green icon (or set kind to 'visitor_request_resolved') once they are approved or rejected."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iteration2_fixes.py", "/app/backend/tests/test_estategate_public_api.py", "/app/backend/tests/helper_concurrency_audit.py", "/app/test_reports/pytest/pytest_iter2_full.xml"],
+  "action_items": [
+    "CRITICAL: Make core.audit() safe under concurrency. Either (a) take the seq from an atomic counter (db.counters.find_one_and_update({'_id':'audit'}, {'$inc':{'seq':1}}, upsert=True, return_document=AFTER)) and keep the chain consistent with an asyncio.Lock, or (b) wrap the read-hash-insert in an asyncio.Lock and retry on DuplicateKeyError. Then re-run tests/helper_concurrency_audit.py and expect 0 errors.",
+    "Make the approve/reject of a visitor request atomic (claim it with a conditional find_one_and_update) so it cannot create duplicate passes.",
+    "Optional: show a resolved state (different icon) on 'Gate request handled' notifications."
+  ],
+  "critical_code_review_comments": [
+    "services.upsert_visitor no longer overwrites full_name. visit.visitor_name is used first on every read path, with visitor.full_name as the fallback for older visits. Correct.",
+    "routes_guard.manual_lookup by ref drops the status filter and is limited to the estate (estate_id). Phone lookup keeps the active/pending filter. Correct.",
+    "offline.ts syncCache rebuilds the USED map only from admitted queue items that have not synced yet, so it no longer double counts entries the server already has. Correct. Minor: enqueue and syncCache both read-modify-write the USED map without a lock, so overlapping calls could drop one increment.",
+    "RoleTabs imports expo-router/native-tabs, which is only used on iOS 26+. The web fallback uses JS Tabs with tabBarButtonTestID. Good.",
+    "Fixed a test ordering bug: test_admin_device_revoke_and_reset revoked the module guard session before test_visitor_name_not_overwritten_across_households ran (401). That test now uses fresh_guard(admin)."
+  ],
+  "updated_files": ["/app/backend/tests/test_estategate_public_api.py", "/app/backend/tests/test_iteration2_fixes.py", "/app/backend/tests/helper_concurrency_audit.py"],
+  "success_rate": {"backend": "100% of functional tests (28/28 run serially); concurrency check FAILS (7/12 500s)", "frontend": "100% of tested flows (one flaky 502 on the first attempt)"},
+  "seed_data_creation": "Created TEST_/UI passes for adaeze (B12) and funmi (C7), with names such as 'Alice Original', 'Mallory Other' and 'UI Smoke Guest'. Created visitor requests 'TEST Notif Approve/Reject'. Two passes were set to expired by editing valid_to directly in Mongo. Guard 1 and Guard 2 devices were reset several times.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run pytest with -n 0 (serial). xdist parallelism triggers the audit seq race (500), and the in-process rate limits need a gap of more than 60s between runs. Guard 1 (Musa) is used for UI tests: run tests/helper_guard_ui_prep.py first to reset the device and get fresh tokens. Guard 2 (Emeka) is used by the pytest suites. After the audit fix, run tests/helper_concurrency_audit.py and expect no 500s (429s are fine).",
+  "rca_of_issue": "Audit 500: core.audit computes seq = max(seq)+1 with a find_one and then inserts. Concurrent coroutines read the same max, and the second insert violates the unique index seq_1, raising DuplicateKeyError, which surfaces as a 500. Repro: python /app/backend/tests/helper_concurrency_audit.py. Mitigation: atomic counter plus a lock, or retry on DuplicateKeyError (re-read last hash so the chain stays valid)."
+}

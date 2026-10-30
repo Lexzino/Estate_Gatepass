@@ -1,0 +1,47 @@
+{
+  "summary": "Full backend + mobile-web (390x844) test of EstateGate. Backend: new public-URL suite (18 tests) plus the legacy suite (25). 42/43 pass. The one failure is a real HIGH bug: visitor names get overwritten across households. Frontend: resident (login chips, home requests approve, invite one-time and recurring, pass detail QR/Share/Revoke sheet, passes filters, alerts), guard (scan tab camera card, lookup by raw token and ref, ALLOW/EXPIRED full-screen results, identity checkbox gating Admit, walk-in -> resident approve -> Verify & admit, log exit) and admin (overview metrics + chart, People residents approve / guards reset sheet / gates, Security incidents resolve / visits reveal with reason gating / audit verify, Settings retention save + run) all work. I fixed 2 bugs: a red-screen crash on the guard result screen on web (expo-screen-capture) and broken uvicorn access logging caused by RedactFilter. Deprecated API detected: expo-router/unstable-native-tabs.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/residents/visits (services.upsert_visitor, services.py:31-37)", "issue": "Visitors are a GLOBAL collection keyed by phone hash, with no estate_id or household scope. Every new pass overwrites visitor.full_name. Any resident, even in another household or estate, can create a pass with the same phone and change the name the guard sees on someone else's existing pass. The guard's identity check is based on this name. Repro: test_visitor_name_not_overwritten_across_households (guard sees 'Mallory Other' instead of 'Alice Original'). Also seen in the UI: the guard log showed 'UI Ref Guest' for the 'UI Token Guest' pass.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "logging (core.RedactFilter)", "issue": "FIXED by testing agent: it set record.args=() for uvicorn.access records, so AccessFormatter crashed with 'not enough values to unpack' on every request (531 'Logging error' tracebacks, access logs lost). It now redacts args in place, and tokens/phones are still redacted."},
+      {"endpoint": "rate_limit (core.py:235)", "issue": "The limiter is in-process memory. It resets on restart and is not shared across workers or pods (already noted in a code comment). Use Mongo/Redis for production."},
+      {"endpoint": "POST /api/guard/manual-lookup", "issue": "A ref for an expired pass returns no result ('No current pass found'), so the guard never sees the EXPIRED reason when looking up by ref. Scanning the token does show EXPIRED. Probably by design, but worth confirming."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "guard/result.tsx usePreventScreenCapture", "issue": "FIXED by testing agent: on web, ScreenCapture.allowScreenCaptureAsync threw an uncaught error (red-screen overlay) when leaving the result screen after Admit. The hook is now skipped on web via a Platform.OS constant.", "testID": "scan-result-admit-button", "priority": "HIGH"},
+      {"component": "Guard Lookup list", "issue": "After admitting a one-time pass from the lookup results, the list is stale: the card still shows ACTIVE with an enabled 'Verify pass' button. Invalidate or refetch the lookup after confirming entry.", "testID": "lookup-result-<ref>", "priority": "LOW"},
+      {"component": "Resident Alerts", "issue": "'Visitor at the gate' notifications still say 'Tap to approve or reject' after the request has been approved or rejected or has expired. There is no resolved state.", "testID": "alerts-list", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "expo-router/unstable-native-tabs", "issue": "Deprecated import. Metro warns: '`expo-router/unstable-native-tabs` is deprecated. Use `expo-router/native-tabs` instead.' Reference: /app/frontend/src/components/RoleTabs.tsx:3"},
+      {"component": "expo-screen-capture on web", "issue": "Not supported on web. Patched with a Platform guard. Reference: /app/frontend/app/guard/result.tsx:25"}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_estategate_public_api.py", "/app/backend/tests/test_estategate.py", "/app/backend/tests/helper_make_request.py", "/app/backend/tests/helper_guard_ui_prep.py", "/app/test_reports/pytest/pytest_results.xml", "/app/test_reports/pytest/pytest_results_public.xml"],
+  "action_items": [
+    "HIGH: Snapshot visitor_name (and phone, encrypted) on each visit document at creation, or scope visitors per estate+household and never overwrite full_name. Then make guard_response, resident_view, the public /p page and the offline-passes cache read the per-visit snapshot. Afterwards, test_visitor_name_not_overwritten_across_households must pass.",
+    "Offline (src/offline.ts:103): syncCache() resets USED={} even when the offline queue still holds unsynced admitted scans, so a one-time pass admitted offline can be admitted again offline after a cache refresh. Rebuild USED from the remaining queue items instead of clearing it, or flush first.",
+    "Migrate RoleTabs.tsx from expo-router/unstable-native-tabs to expo-router/native-tabs.",
+    "Refresh guard lookup results after admit/refuse. Mark resolved visitor_request notifications in Alerts.",
+    "Optional: readEnc silently returns the fallback on decrypt failure, which can drop queued offline scans without warning. Log or surface it."
+  ],
+  "critical_code_review_comments": [
+    "upsert_visitor is a global mutable shared record. This is both a cross-tenant integrity issue and a data-minimisation issue (one visitor doc is shared by all estates).",
+    "Offline evaluateOffline mirrors the server rules well (Ed25519 verification against the cached public key, max scans, window, gates, schedule). The only concern is the USED reset on sync.",
+    "Rate limiting works (lookup 10/min, scan 40/min). Test suites sharing Guard 2 can hit 429 when run back-to-back, because the legacy test_scan_rate_limit drains the scan bucket. Wait about 60s between suites.",
+    "RBAC, household isolation, refresh rotation, device binding/revoke, audit chain verification, PII reveal reason >=10 chars, rules validation (Literal 90/180/365) and offline-sync idempotency plus duplicate flagging all verified."
+  ],
+  "updated_files": ["/app/frontend/app/guard/result.tsx", "/app/backend/core.py", "/app/backend/tests/test_estategate_public_api.py", "/app/backend/tests/helper_make_request.py", "/app/backend/tests/helper_guard_ui_prep.py"],
+  "success_rate": {"backend": "97.6% (42/43; 1 HIGH bug repro)", "frontend": "~95% (all requested flows work after the ScreenCapture fix; 2 minor UX staleness issues)"},
+  "seed_data_creation": "Created many TEST_/UI passes for house B12, walk-in requests, an approved resident 'Pending Uitest' (C7, pending_uitest@example.com / Pending@12345), a suspended 'TEST Newbie' and a privacy request. Retention was set to 365 days via the UI (seed default may differ). Guard 1 and Guard 2 device bindings were reset multiple times.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run the public suite with `cd /app/backend && python -m pytest tests/test_estategate_public_api.py -q -n 0`. Wait about 60s after the legacy suite because of the scan/lookup rate limits on Guard 2. Each new Playwright browser context is a new guard device: run `python tests/helper_guard_ui_prep.py` (resets Guard 1 and prints fresh tokens/refs) before a guard UI login. `python tests/helper_make_request.py` creates a pending walk-in request for B12. Segmented controls use testID `<segment>-<value>`, e.g. people-segment-guards and security-segment-audit.",
+  "rca_of_issue": "1) Visitor name overwrite: services.upsert_visitor finds the visitor by phone_hash and runs $set full_name on every create_visit. Visits store only visitor_id, so every older pass referencing that visitor shows the newest name. Mitigation: store visitor_name on the visit. 2) Web red screen: expo-screen-capture's usePreventScreenCapture calls the native module on unmount, which throws UnavailabilityError on web. Mitigation applied: Platform guard. 3) Logging errors: RedactFilter cleared record.args, but uvicorn's AccessFormatter does `client_addr, method, full_path, http_version, status_code = record.args`. Mitigation applied: redact the args tuple in place for uvicorn.access."
+}
